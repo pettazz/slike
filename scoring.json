@@ -1,0 +1,12 @@
+[
+  {
+    "name": "temp",
+    "type": "int",
+    "ideal": 30,
+    "absolute": false,
+    "func": false,
+    "normalizer": 10,
+    "weight": 10,
+    "translation": false
+  }
+]
