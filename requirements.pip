@@ -1,0 +1,10 @@
+async-cache
+authlib
+cachetools
+httpx
+methodtools
+pyyaml
+pytz
+redis[hiredis]
+reverse-geocode
+sanic

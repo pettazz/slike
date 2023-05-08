@@ -1,0 +1,20 @@
+jwt_ttl_mins: 120 #seconds, should be way lower when this is real
+scoring_location: scoring.json
+
+geocache:
+  enabled: true
+  latlng_decimals: 2
+
+retry:
+  codes: 
+    - 408x # request timeout -- used to identify ReadTimeout errors
+    - 429 # too many requests
+    - 500 # internal server error
+    - 502 # bad gateway
+    - 503 # service unavailable
+    - 504 # gateway timeout
+  attempts: 5
+  backoff: 1 #seconds
+
+redis:
+  port: 6379

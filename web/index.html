@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <title>'slike, gonna be fine</title>
+
+    <style type="text/css">
+      body{
+        font-family: system-ui;
+      }
+      table{
+        border-collapse: collapse;
+      }
+
+      tr:nth-child(even){
+        background-color: rgba(0,100,255,0.1);
+      }
+
+      td{
+        padding: 2px 7px;
+      }
+    </style>
+
+    <script type="text/javascript">
+      let lat, lon, accuracy, lang, tz, country, local;
+
+      const $ = (qs) => {
+        return document.querySelectorAll(qs);
+      };
+      const gid = (id) => {
+        return document.getElementById(id);
+      };
+      const setText = (id, text) => {
+        gid(id).innerText = text;
+      };
+
+      window.addEventListener('DOMContentLoaded', () => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            lat = pos.coords.latitude;
+            setText('lat', lat);
+            lon = pos.coords.longitude;
+            setText('lon', lon);
+            accuracy = pos.coords.accuracy;
+            setText('accuracy', accuracy);
+
+            getForecast();
+          }, 
+          (err) => {
+            console.error(`ERROR(${err.code}): ${err.message}`);
+            setText('lat', 'failed');
+            setText('lon', 'failed');
+            setText('accuracy', 'failed');
+          }, 
+          {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0,
+        });
+
+        lang = window.navigator.language;
+        setText('lang', lang);
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        setText('tz', tz);
+      });
+
+      const getForecast = () => {
+        if(lat && lon && accuracy && lang && tz){
+          const cell = $('#forecast-table > tbody')[0].insertRow().insertCell();
+          cell.setAttribute('colspan', '12');
+          cell.setAttribute('id', 'loading-forecast');
+          cell.append('...');
+
+          fetch(`/forecast?lat=${lat}&lon=${lon}&lang=${lang}&tz=${tz}`)
+            .then((res) => {
+              if (!res.ok) {
+                throw new Error(`HTTP error! Status: ${res.status}`);
+              }
+              return res.json();
+            })
+            .then((response) => {
+              country = response.meta.country;
+              local = response.meta.local;
+              setText('country', country);
+              setText('local', local);
+
+              $('#forecast-table > tbody')[0].deleteRow(0);
+              const forecastFetchTime = new Date(response.forecastFetchTime);
+              const forecast = response.forecast;
+              for(let hour in forecast){
+                const row = $('#forecast-table > tbody')[0].insertRow();
+                for(let field in forecast[hour]){
+                  let content;
+                  if(field === 'time'){
+                    const dt = new Date(forecast[hour][field]);
+                    content = `${dt.getMonth()}/${dt.getDate()} ${dt.getHours()}:00`;
+                  }else{
+                    content = forecast[hour][field];
+                  }
+                  const cell = row.insertCell().append(content);
+                }
+              }
+              setText('last-updated', forecastFetchTime.toLocaleString());
+            })
+            .catch((err) => {
+              console.error(err);
+              setText('loading-forecast', 'failed');
+              setText('country', 'failed');
+              setText('local', 'failed');
+            });
+
+        }else{
+          const cell = $('#forecast-table > tbody')[0].insertRow().insertCell();
+          cell.setAttribute('colspan', '12');
+          cell.append('missing some data, see above');
+        }
+      }
+    </script>
+  </head>
+
+  <body>
+    <h1>'slike, gonna be fine</h1>
+
+    <h2>your info</h2>
+    <table>
+      <tr>
+        <td><strong>lat</strong></td>
+        <td id="lat">...</td>
+      </tr>
+      <tr>
+        <td><strong>lon</strong></td>
+        <td id="lon">...</td>
+      </tr>
+      <tr>
+        <td><strong>accuracy</strong></td>
+        <td id="accuracy">...</td>
+      </tr>
+      <tr>
+        <td><strong>lang</strong></td>
+        <td id="lang">...</td>
+      </tr>
+      <tr>
+        <td><strong>tz</strong></td>
+        <td id="tz">...</td>
+      </tr>
+      <tr>
+        <td><strong>country</strong></td>
+        <td id="country">...</td>
+      </tr>
+      <tr>
+        <td><strong>local</strong></td>
+        <td id="local">...</td>
+      </tr>
+    </table>
+
+    <h2>forecast data</h2>
+    <p>fields displayed are weighted scores with raw values in parenthesis (metric where applicable)</p>
+    <p>last updated <span id="last-updated">n/a</span> (results are cached per location until the top of each hour)</p>
+    <table id="forecast-table">
+      <thead>
+        <tr>
+          <td><strong>time</strong></td>
+          <td><strong>daylight</strong></td>
+          <td><strong>precipChance</strong></td>
+          <td><strong>temp</strong></td>
+          <td><strong>precipIntensity</strong></td>
+          <td><strong>precipType</strong></td>
+          <td><strong>tempDewPoint</strong></td>
+          <td><strong>wind</strong></td>
+          <td><strong>uvIndex</strong></td>
+          <td><strong>cloudCover</strong></td>
+          <td><strong>windGust</strong></td>
+          <td><strong>score</strong></td>
+        </tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+      
+  </body>
+
+</html>
