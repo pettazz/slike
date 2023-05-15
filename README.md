@@ -20,7 +20,16 @@ TODO
 - ~~read scoring.json into redis at startup, use it to read from when scoring~~
 - ~~admin endpoint for scoring ingest to populate redis instead~~
   - ~~split the API call caching and scoring caching, bust scoring when profile is updated~~
-- multiple scoring profiles
+- ~~replace async-cache with redis for forecast~~
+  - ~~endpoint to force evict all caches~~
+- ~~out of memory crashes~~
+- ~~figure out the redis reconnection timeouts~~
+- ~~multiple scoring profiles~~
+  - ~~UI select from available, persist selection in localstorage, include in API calls~~
+  - ~~parameterize ingest, read from profiles, everything~~
+- choose location instead of gps
+  - use openweathermap api for geocoding
+- remove field scores from forecast response, only tag most impactful 
 - admin routes auth
 - make a website that don't suck
 

@@ -1,6 +1,9 @@
 jwt_ttl_mins: 120 #seconds, should be way lower when this is real
 scoring_location: scoring.json
 
+memory_caching:
+  maxsize: 1024
+
 geocache:
   enabled: true
   latlng_decimals: 2
@@ -18,3 +21,4 @@ retry:
 
 redis:
   port: 6379
+  reconnect_timer: 1800 #seconds

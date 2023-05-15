@@ -6,12 +6,14 @@
 app = "slike"
 kill_signal = "SIGINT"
 kill_timeout = 5
-primary_region = "bos"
+primary_region = "ewr"
 processes = []
 
 [build]
 
 [env]
+  SLIKE_DEBUG_ENABLED = "TRUE"
+  SLIKE_ENV = "PROD"
 
 [experimental]
   auto_rollback = true

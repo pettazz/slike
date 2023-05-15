@@ -2,6 +2,8 @@ import asyncio
 import base64
 import json as JSON
 import os
+import socket
+import tracemalloc
 from datetime import datetime, timedelta
 
 import httpx
@@ -12,6 +14,7 @@ import redis.asyncio as redis
 import reverse_geocode
 from authlib.jose import jwt
 from cache import AsyncTTL, AsyncLRU
+from methodtools import lru_cache
 from sanic import Sanic
 from sanic.exceptions import SanicException
 from sanic.log import logger
@@ -19,39 +22,64 @@ from sanic.response import json, file, text
 
 from config import Config
 
+# tracemalloc.start()
+
 app = Sanic('slike')
 
 app.static("/assets/", "web/assets/")
 
 @app.before_server_start
-async def bootstrap_scoring(app):
-  app.ctx.scoring_kv = redis.Redis(
-    host=os.getenv('SLIKE_REDIS_HOST'),
-    password=os.getenv('SLIKE_REDIS_PASSWORD'),
-    port=Config().redis.port, 
-    decode_responses=True
-  )
-
-  app.ctx.profile_ingests = {}
+async def bootstrapScoring(app):
+  await checkKV(None)
   with open(Config().scoring_location, 'rb') as f:
     scoring_data = f.read()
   await setScorer('default', scoring_data)
 
-@app.route('/')
+@app.on_request
+async def checkKV(request):
+  if request and request.name in ['slike.hello']:
+    logger.debug('skipping kv check for %s' % request.name)
+    return
+
+  if (hasattr(app.ctx, 'kv_time') 
+      and datetime.now().timestamp() - app.ctx.kv_time < Config().redis.reconnect_timer
+      and hasattr(app.ctx, 'kv')):
+    try:
+      logger.debug('testing redis connection with ping')
+      await app.ctx.kv.ping()
+      logger.debug('pong')
+    except Exception as e:
+      logger.debug('cant connect to redis with existing conn:')
+      logger.debug(e)
+      app.ctx.kv = await connectKV()
+  else:
+    app.ctx.kv = await connectKV()
+
+@app.get('/')
 async def hello(request):
   return await file('web/index.html')
 
-@app.route('/profiles')
+@app.get('/profiles')
 async def profiles(request):
-  keys = await app.ctx.scoring_kv.keys('scoring:*')
-  return json(keys)
+  profiles = []
+  cursor = '0'
+  cache_ns = 'scoring:*'
+  while cursor != 0:
+    cursor, keys = await app.ctx.kv.scan(cursor=cursor, match=cache_ns, count=5000)
+    if keys:
+      profiles.extend([key.decode('utf-8') for key in keys])
 
-@app.route('/forecast')
+  return json(profiles)
+
+@app.get('/forecast')
 async def forecast(request):
   lang = request.args.get('lang')
   tz = request.args.get('tz')
   lat = request.args.get('lat')
   lon = request.args.get('lon')
+  profile = request.args.get('profile')
+  if not profile:
+    profile = 'default'
 
   logger.debug("coords requested (%s, %s)" % (lat, lon))
 
@@ -60,17 +88,18 @@ async def forecast(request):
     lon = ('%.' + str(Config().geocache.latlng_decimals) + 'f') % float(lon)
     logger.debug("coords rounded to (%s, %s)" % (lat, lon))
 
-  coords = reverse_geocode.search([(lat, lon)])
-  country =coords[0]['country_code']
-  local = coords[0]['city']
-  logger.debug("revgeo'd to %s, %s" % (country, local))
+  local, country = revGeo(lat, lon)
 
   if Config().geocache.enabled:
-    fetch_timestamp, forecast = await cacheableGetForecast(lat, lon, lang, country, tz)
+    data = await cacheableGetForecast(lat, lon, lang, country, tz)
   else:
-    fetch_timestamp, forecast = await getForecast(lat, lon, lang, country, tz)
+    data = await getForecast(lat, lon, lang, country, tz)
 
-  scored_results = await doScoring(forecast, 'default', app.ctx.profile_ingests['default'])
+  fetch_timestamp = data['fetchedAt']
+  forecast = data['forecast']
+
+  last_scoring_update = await app.ctx.kv.get('ingest:scoring:%s' % profile)
+  scored_results = await doScoring(forecast, profile, last_scoring_update)
 
   result = {
     'meta': {
@@ -81,28 +110,79 @@ async def forecast(request):
     'forecast': scored_results
   }
 
+  logmem('forecast')
+  
   return json(result)
 
-@app.put('/ingest/scoring')
-async def ingest(request):
+@app.put('/ingest/scoring/<profile>')
+async def ingest(request, profile):
   new_data = request.body
-  # validate jsonschema?
-  await setScorer('default', new_data)
+  # TODO: validate jsonschema?
+  await setScorer(profile, new_data)
   return text('OK')
 
+@app.post('/cache/wipe')
+async def cacheWipe(request):
+  # TODO: definitely get rid of this after dev
+  if not (cache_ns := request.args.get('pattern')): cache_ns = 'cache:*'
+  logger.debug('wiping pattern `%s` from kv' % cache_ns)
+  cursor = '0'
+  while cursor != 0:
+    cursor, keys = await app.ctx.kv.scan(cursor=cursor, match=cache_ns, count=5000)
+    if keys:
+      await app.ctx.kv.delete(*keys)
+
+  return text('OK')
+  
+async def connectKV():
+  logger.debug('opening new redis connection')
+  app.ctx.kv_time = datetime.now().timestamp()
+  return await redis.Redis(
+    host=os.getenv('SLIKE_SECRET_REDIS_HOST'),
+    password=os.getenv('SLIKE_SECRET_REDIS_PASSWORD'),
+    port=Config().redis.port, 
+    decode_responses=False,
+    health_check_interval=5,
+    socket_keepalive=False,
+    socket_connect_timeout=5,
+    retry_on_timeout=True
+  )
 
 async def setScorer(name, new_data):
-  await app.ctx.scoring_kv.set('scoring:%s' % name, new_data)
-  app.ctx.profile_ingests[name] = datetime.now().timestamp()
+  logger.debug('setting scoring data for %s in kv' % name)
+  await app.ctx.kv.set('scoring:%s' % name, new_data)
+  ts = datetime.now().timestamp()
+  await app.ctx.kv.set('ingest:scoring:%s' % name, ts)
+  logger.debug('set at %s' % ts)
 
-@AsyncTTL(maxsize=1024, time_to_live=((datetime.now() + timedelta(hours=1)).replace(microsecond=0, second=0, minute=0) - datetime.now()).seconds)
+@AsyncLRU(maxsize=Config().memory_caching.maxsize)
+async def getScorer(name, buster):
+  logger.debug('loading scoring data for %s from kv' % name)
+  return await app.ctx.kv.get('scoring:%s' % name)
+
 async def cacheableGetForecast(lat, lon, lang, country, tz):
-  logger.debug("using cacheable forecast")
-  return await getForecast(lat, lon, lang, country, tz)
+  cache_key = "cache:forecast:%s%s%s%s%s" % (lat, lon, lang, country, tz)
+  logger.debug("forecast cache key: %s" % cache_key)
+  logger.debug("getting cached forecast at %s" % datetime.now().timestamp())
+  cached_result = await app.ctx.kv.get(cache_key)
+  logger.debug("finished get cached forecast at %s" % datetime.now().timestamp())
+  if cached_result is not None:
+    logger.debug("using cached forecast")
+    result = JSON.loads(cached_result)
+  else:
+    logger.debug("cache miss, getting new forecast")
+    result = await getForecast(lat, lon, lang, country, tz)
+    next_hour_ttl = ((datetime.now() + timedelta(hours=1)).replace(microsecond=0, second=0, minute=0) - datetime.now()).seconds
+    if next_hour_ttl < 1:
+      # in case we are actually within the last second of the hour
+      next_hour_ttl = 1
+    await app.ctx.kv.set(cache_key, JSON.dumps(result), ex=next_hour_ttl)
+
+  return result
 
 async def getForecast(lat, lon, lang, country, tz):
   logger.debug("getting forecast")
-  bearer = check_token()
+  bearer = checkToken()
   headers = {"Authorization": "Bearer %s" % bearer.decode('utf-8')}
 
   url = f"https://weatherkit.apple.com/api/v1/weather/{lang}/{lat}/{lon}?countryCode={country}&timezone={tz}&dataSets=forecastHourly,forecastNextHour"
@@ -125,12 +205,12 @@ async def getForecast(lat, lon, lang, country, tz):
           await asyncio.sleep(attempt * Config().retry.backoff)
           continue
 
-  return (datetime.now().isoformat(), r.json())
+  return {"fetchedAt": datetime.now(pytz.timezone(tz)).isoformat(), "forecast": r.json()}
 
-@AsyncLRU(maxsize=128)
-async def doScoring(forecast_data, profile, profile_cache_buster):
+@AsyncLRU(maxsize=Config().memory_caching.maxsize)
+async def doScoring(forecast_data, profile, buster):
   logger.debug('doing a new scoring')
-  scoring_data = await app.ctx.scoring_kv.get('scoring:%s' % profile)
+  scoring_data = await getScorer(profile, buster)
   forecast = []
 
   for h, hour in enumerate(forecast_data['forecastHourly']['hours']):
@@ -142,7 +222,7 @@ async def doScoring(forecast_data, profile, profile_cache_buster):
     for scorer in JSON.loads(scoring_data):
       val = raw_val = hour[scorer['name']]
       if scorer['translation']:
-        # try for missing enum here
+        # TODO: try for missing enum here
         val = scorer['translation'][str(val)]
       diff = val - scorer['ideal']
       if scorer['absolute']:
@@ -159,7 +239,20 @@ async def doScoring(forecast_data, profile, profile_cache_buster):
 
     forecast.append(row)
 
+  logmem('doScoring')
   return forecast
+
+@lru_cache(maxsize=Config().memory_caching.maxsize)
+def revGeo(lat, lon):
+  logmem('pre-geo')
+  coords = reverse_geocode.search([(lat, lon)])
+  logmem('post-geo')
+
+  country =coords[0]['country_code']
+  local = coords[0]['city']
+  logger.debug("revgeo'd to %s, %s" % (local, country))
+
+  return (local, country)
 
 def func(name, val):
   match name:
@@ -172,14 +265,14 @@ def func(name, val):
 
   return retval
 
-def check_token():
+def checkToken():
   if hasattr(app.ctx, 'bearer') and hasattr(app.ctx, 'bearer_exp') and app.ctx.bearer_exp > datetime.now().timestamp():
     logger.debug("reusing token")
     return app.ctx.bearer
   else:
-    return new_token()
+    return newToken()
 
-def new_token():
+def newToken():
   now = datetime.now()
   exp = now + timedelta(minutes=Config().jwt_ttl_mins)
 
@@ -201,6 +294,11 @@ def new_token():
   logger.debug("new token signed")
 
   return bearer
+
+def logmem(location):
+  if tracemalloc.is_tracing():
+    current, peak = tracemalloc.get_traced_memory()
+    logger.debug('memory at `%s` current: %.2f MB, peak: %.2f MB' % (location, current/1024/1024, peak/1024/1024))
 
 if __name__ == '__main__':
   app.run(host='0.0.0.0', port=8000, debug=os.getenv('SLIKE_DEBUG_ENABLED') == "TRUE")

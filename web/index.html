@@ -22,7 +22,8 @@
     </style>
 
     <script type="text/javascript">
-      let lat, lon, accuracy, lang, tz, country, local;
+      let lat, lon, accuracy, lang, tz, country, local, 
+          profile = localStorage.getItem('userconfig.lastSelectedProfile') || 'default';
 
       const $ = (qs) => {
         return document.querySelectorAll(qs);
@@ -35,6 +36,32 @@
       };
 
       window.addEventListener('DOMContentLoaded', () => {
+        fetch(`/profiles`)
+          .then((res) => {
+            if (!res.ok) {
+              throw new Error(`HTTP error! Status: ${res.status}`);
+            }
+            return res.json();
+          })
+          .then((response) => {
+            for(let pid in response){
+              const profName = response[pid].slice('scoring:'.length);
+              const selected = (profName == profile);
+              $('#profile-selector')[0].add(new Option(profName, profName, selected, selected));
+            }
+
+            $('#profile-selector')[0].addEventListener(
+              'change',
+              function(eo){
+                profile = this.value;
+                localStorage.setItem('userconfig.lastSelectedProfile', this.value);
+                console.log('switched profile to ' + this.value);
+                getForecast();
+              },
+              false
+            );
+          });
+
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             lat = pos.coords.latitude;
@@ -65,13 +92,14 @@
       });
 
       const getForecast = () => {
-        if(lat && lon && accuracy && lang && tz){
+        if(lat && lon && accuracy && lang && tz && profile){
+          $('#forecast-table > tbody')[0].replaceChildren();
           const cell = $('#forecast-table > tbody')[0].insertRow().insertCell();
           cell.setAttribute('colspan', '12');
           cell.setAttribute('id', 'loading-forecast');
           cell.append('...');
 
-          fetch(`/forecast?lat=${lat}&lon=${lon}&lang=${lang}&tz=${tz}`)
+          fetch(`/forecast?lat=${lat}&lon=${lon}&lang=${lang}&tz=${tz}&profile=${profile}`)
             .then((res) => {
               if (!res.ok) {
                 throw new Error(`HTTP error! Status: ${res.status}`);
@@ -152,6 +180,10 @@
         <td id="local">...</td>
       </tr>
     </table>
+
+    <h2>profile</h2>
+    <select id="profile-selector">
+    </select>
 
     <h2>forecast data</h2>
     <p>fields displayed are weighted scores with raw values in parenthesis (metric where applicable)</p>

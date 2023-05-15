@@ -26,8 +26,6 @@ then
   do
     key="SLIKE_SECRET_${line%:*}"
     val=${line#*:}
-    echo "setting secret $key"
-    echo "to $val"
     fly secrets set "$key=$val"
   done < "secrets.config"
 fi
