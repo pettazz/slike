@@ -34,7 +34,7 @@ do
   val=${line#*:}
   echo "SLIKE_SECRET_$key=\"$val\"" >> .dev-secrets.env
 done < "secrets.config"
-echo "SLIKE_REDIS_HOST=\"redis\"" >> .dev-secrets.env
-echo "SLIKE_REDIS_PASSWORD=\"\"" >> .dev-secrets.env
+echo "SLIKE_SECRET_REDIS_HOST=\"redis\"" >> .dev-secrets.env
+echo "SLIKE_SECRET_REDIS_PASSWORD=\"\"" >> .dev-secrets.env
 
-docker-compose up
+docker-compose up 
