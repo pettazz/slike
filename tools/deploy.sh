@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+mydir="$(cd "$(dirname "$0")" && pwd)"
+
 SKIP_GIT_CHECK="false"
 while getopts "fs" opt; do
   case $opt in
@@ -20,6 +22,11 @@ then
   exit 1
 fi
 
+cd $mydir/../web
+pnpm run clean
+pnpm run build
+cd $mydir/..
+
 if [[ $SKIP_SECRETS_SET != "true" ]];
 then 
   while read -r line
@@ -27,7 +34,7 @@ then
     key="SLIKE_SECRET_${line%:*}"
     val=${line#*:}
     fly secrets set "$key=$val"
-  done < "secrets.config"
+  done < "server/secrets.config"
 fi
 
 fly deploy

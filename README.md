@@ -29,9 +29,15 @@ TODO
   - ~~parameterize ingest, read from profiles, everything~~
 - choose location instead of gps
   - use openweathermap api for geocoding
+- clean old caches values from redis? upstash retention settings?
 - remove field scores from forecast response, only tag most impactful 
 - admin routes auth
 - make a website that don't suck
+
+WISHLIST
+---
+- add aqi fields
+  - nobody has hourly data on this, let alone forecasts, so comparisons are mostly pointless 
 
 
 ### lat long decimal place accuracy

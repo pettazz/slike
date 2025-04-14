@@ -1,3 +1,4 @@
 # flyctl launch added from .gitignore
 **/.DS_Store
 fly.toml
+__pycache__/

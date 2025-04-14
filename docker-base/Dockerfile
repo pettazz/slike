@@ -1,4 +1,4 @@
-FROM sanicframework/sanic:3.11-latest
+FROM sanicframework/sanic:lts-py3.11
 
 RUN apk update
 RUN apk add build-base gfortran openblas-dev python3-dev

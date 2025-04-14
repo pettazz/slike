@@ -20,8 +20,16 @@
 # CMD="docker run --name slike -p 80:8000 $ENVS -d slike"
 # eval $CMD
 
+mydir="$(cd "$(dirname "$0")" && pwd)"
+
 docker-compose down
-docker build -t slike .
+
+cd $mydir/../web
+pnpm run clean
+pnpm run build
+cd $mydir/..
+
+docker build --platform=linux/amd64 -t slike .
 
 rm .dev-secrets.env
 touch .dev-secrets.env
@@ -33,8 +41,8 @@ do
   key=${line%:*}
   val=${line#*:}
   echo "SLIKE_SECRET_$key=\"$val\"" >> .dev-secrets.env
-done < "secrets.config"
+done < "server/secrets.config"
 echo "SLIKE_SECRET_REDIS_HOST=\"redis\"" >> .dev-secrets.env
 echo "SLIKE_SECRET_REDIS_PASSWORD=\"\"" >> .dev-secrets.env
 
-docker-compose up 
+docker-compose up

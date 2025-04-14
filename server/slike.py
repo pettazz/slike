@@ -40,6 +40,9 @@ async def checkKV(request):
   if request and request.name in ['slike.hello']:
     logger.debug('skipping kv check for %s' % request.name)
     return
+  else:
+    if request:
+      logger.debug('doing kv check for %s' % request.name)
 
   if (hasattr(app.ctx, 'kv_time') 
       and datetime.now().timestamp() - app.ctx.kv_time < Config().redis.reconnect_timer
@@ -78,6 +81,8 @@ async def forecast(request):
   lat = request.args.get('lat')
   lon = request.args.get('lon')
   profile = request.args.get('profile')
+  # TODO: check for missing args
+
   if not profile:
     profile = 'default'
 

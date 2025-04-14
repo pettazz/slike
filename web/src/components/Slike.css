@@ -1,0 +1,15 @@
+section{
+  margin: 20px auto;
+
+  table{
+    border-collapse: collapse;
+
+    tr:nth-child(even){
+      background-color: rgba(0, 255, 50, 0.1);
+    }
+
+    td{
+      padding: 2px 7px;
+    }
+  }
+}

@@ -12,6 +12,7 @@ processes = []
 [build]
 
 [env]
+  # TODO: turn off debug in prod
   SLIKE_DEBUG_ENABLED = "TRUE"
   SLIKE_ENV = "PROD"
 

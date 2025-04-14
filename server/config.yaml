@@ -9,7 +9,7 @@ geocache:
   latlng_decimals: 2
 
 retry:
-  codes: 
+  codes: # list of response codes we will retry for
     - 408x # request timeout -- used to identify ReadTimeout errors
     - 429 # too many requests
     - 500 # internal server error
