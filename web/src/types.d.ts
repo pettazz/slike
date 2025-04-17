@@ -16,7 +16,7 @@ declare type ForecastHour = {
   precipitationChance: string;
   precipitationIntensity: string;
   precipitationType: string;
-  score: number;
+  score: string;
   temperature: string;
   temperatureDewPoint: string;
   time: string;

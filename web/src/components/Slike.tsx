@@ -1,9 +1,10 @@
 import React, {
   useEffect,
-  // useMemo,
+  useMemo,
   useState
 } from 'react';
 
+import { Graph } from 'components/Graph/Graph';
 import { useLocation } from 'utils/useLocation';
 import './Slike.css';
 
@@ -25,6 +26,18 @@ function Forecast({
   tz
 }: IContextProps) {
   const [forecastData, setForecastData] = useState<ForecastData | null>(null);
+  const forecastFields = [
+    'daylight',
+    'precipitationChance',
+    'temperature',
+    'precipitationIntensity',
+    'precipitationType',
+    'temperatureDewPoint',
+    'windSpeed',
+    'uvIndex',
+    'windGust',
+    'cloudCover'
+  ];
 
   useEffect(() => {
     if (!isLocating && !locationError) {
@@ -46,6 +59,22 @@ function Forecast({
         });
     }
   }, [isLocating, profile]);
+
+  let forecastGraphData = useMemo(() => {
+    let data: [string, number, string][] = [];
+    
+    if (forecastData) {
+      forecastData.forecast.map((hour) => {
+        forecastFields.map((field) => {
+          const dt = new Date(hour.time),
+                value = parseFloat(hour[field as keyof ForecastHour].replace(/ \(.*\)/g, ''));
+          data.push([dt.toISOString(), value, field]);
+        });
+      });
+    }
+
+    return data;
+  }, [forecastData]);
 
   if (isLocating || locationError || !forecastData) {
     return;
@@ -71,40 +100,17 @@ function Forecast({
       <table>
         <thead>
           <tr>
-            <td>
+            <td key="time">
               <strong>time</strong>
             </td>
-            <td>
-              <strong>daylight</strong>
-            </td>
-            <td>
-              <strong>precipChance</strong>
-            </td>
-            <td>
-              <strong>temp</strong>
-            </td>
-            <td>
-              <strong>precipIntensity</strong>
-            </td>
-            <td>
-              <strong>precipType</strong>
-            </td>
-            <td>
-              <strong>tempDewPoint</strong>
-            </td>
-            <td>
-              <strong>wind</strong>
-            </td>
-            <td>
-              <strong>uvIndex</strong>
-            </td>
-            <td>
-              <strong>cloudCover</strong>
-            </td>
-            <td>
-              <strong>windGust</strong>
-            </td>
-            <td>
+            {forecastFields.map((field) => {
+              return (
+                <td key={field}>
+                  <strong>{field}</strong>
+                </td>
+              );
+            })}
+            <td key="score">
               <strong>score</strong>
             </td>
           </tr>
@@ -112,22 +118,24 @@ function Forecast({
         <tbody>
           {forecastData.forecast.map((hour) => {
             const dt = new Date(hour.time);
+            
             return (
               <tr key={hour.time}>
-                {Object.entries(hour).map(([field, value]) => {
-                  if (field == 'time') {
-                    return (
-                      <td key="time">{`${dt.getMonth()}/${dt.getDate()} ${dt.getHours()}:00`}</td>
-                    );
-                  } else {
-                    return <td key={field}>{value}</td>;
-                  }
-                })}
+                <td key="time">{`${dt.getMonth()}/${dt.getDate()} ${dt.getHours()}:00`}</td>
+                  {forecastFields.map((field) => {
+                    return <td key={field}>{hour[field as keyof ForecastHour]}</td>;
+                  })}
+                <td key="score">{hour.score}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
+
+      <Graph 
+        fields={forecastFields}
+        data={forecastGraphData} 
+        events={{}} />
     </section>
   );
 }
