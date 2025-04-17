@@ -265,6 +265,8 @@ def func(name, val):
       retval = (0.33 * val) ** 2
     case 'sq':
       retval = val ** 2
+    case 'floor':
+      retval = val if val > 0 else 0
     case _:
       retval = val
 
