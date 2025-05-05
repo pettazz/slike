@@ -4,23 +4,20 @@ import React, {
   useState
 } from 'react';
 
-import { Graph } from 'components/Graph/Graph';
+import { GraphRiver } from 'components/GraphRiver/GraphRiver';
+import { GraphStack } from 'components/GraphStack/GraphStack';
 import { useLocation } from 'utils/useLocation';
 import './Slike.css';
 
 interface IContextProps {
-  isLocating: boolean;
   location: LatLon;
-  locationError: string | null;
   lang: string;
   profile: string;
   tz: string;
 }
 
 function Forecast({
-  isLocating,
   location,
-  locationError,
   lang,
   profile,
   tz
@@ -40,29 +37,30 @@ function Forecast({
   ];
 
   useEffect(() => {
-    if (!isLocating && !locationError) {
-      const params = new URLSearchParams({
-        lat: `${location.lat}`,
-        lon: `${location.lon}`,
-        lang: lang,
-        tz: tz,
-        profile: profile
+    const params = new URLSearchParams({
+      lat: `${location.lat}`,
+      lon: `${location.lon}`,
+      lang: lang,
+      tz: tz,
+      profile: profile
+    });
+
+    fetch('/forecast?' + params)
+      .then((response) => response.json())
+      .then((response) => {
+        setForecastData(response);
+      })
+      .catch((err) => {
+        console.error(err);
       });
+  }, [profile]);
 
-      fetch('/forecast?' + params)
-        .then((response) => response.json())
-        .then((response) => {
-          setForecastData(response);
-        })
-        .catch((err) => {
-          console.error(err);
-        });
-    }
-  }, [isLocating, profile]);
+  // trying out two different graphs here 
 
+  // build data for graph candidate 1: river graph 
   let forecastGraphData = useMemo(() => {
     let data: [string, number, string][] = [];
-    
+
     if (forecastData) {
       forecastData.forecast.map((hour) => {
         forecastFields.map((field) => {
@@ -76,8 +74,41 @@ function Forecast({
     return data;
   }, [forecastData]);
 
-  if (isLocating || locationError || !forecastData) {
-    return;
+  // build data for graph candidate 2: stack graph 
+  let forecastGraphData2 = useMemo(() => {
+    let data: number[][] = [];
+    
+    if (forecastData) {
+      forecastFields.map((field) => {
+        let fieldRow: number[] = [];
+
+        forecastData.forecast.map((hour) => {
+          const value = parseFloat(hour[field as keyof ForecastHour].replace(/ \(.*\)/g, ''));
+          fieldRow.push(value);
+        });
+
+        data.push(fieldRow);
+      });
+    }
+
+    return data;
+  }, [forecastData]);
+
+  let forecastGraphData2Hours = useMemo(() => {
+    let data: string[] = [];
+
+    if (forecastData) {
+      forecastData.forecast.map((hour) => {
+        const dt = new Date(hour.time);
+        data.push(`${dt.getMonth()}/${dt.getDate()} ${dt.getHours()}:00`);
+      });
+    }
+
+    return data;
+  }, [forecastData]);
+
+  if (!forecastData) {
+    return <div className="text-red-500">Failed to fetch forecast data!</div>;
   }
 
   return (
@@ -132,9 +163,15 @@ function Forecast({
         </tbody>
       </table>
 
-      <Graph 
+      <GraphRiver 
         fields={forecastFields}
         data={forecastGraphData} 
+        events={{}} />
+
+      <GraphStack 
+        fields={forecastFields}
+        data={forecastGraphData2} 
+        hours={forecastGraphData2Hours}
         events={{}} />
     </section>
   );
@@ -178,21 +215,11 @@ function Profile({ selectedProfile, onChange }: IProfileProps) {
 }
 
 function UserDetails({
-  isLocating,
   location,
-  locationError,
   lang,
   profile,
   tz
 }: IContextProps) {
-  if (isLocating) {
-    return <div>locating...</div>;
-  }
-
-  if (locationError) {
-    return <div className="text-red-500">{locationError}</div>;
-  }
-
   return (
     <section>
       <h2 className="text-2xl font-bold text-lime-700">your info</h2>
@@ -243,12 +270,18 @@ function App() {
       localStorage.getItem('userconfig.lastSelectedProfile') || 'default',
     [selectedProfile, setSelectedProfile] = useState<string>(initialProfile);
 
+  if (isLocating) {
+    return <div>locating...</div>;
+  }
+
+  if (locationError) {
+    return <div className="text-red-500">{locationError}</div>;
+  }
+
   return (
     <main>
       <UserDetails
-        isLocating={isLocating}
         location={location}
-        locationError={locationError}
         lang={lang}
         profile={selectedProfile}
         tz={tz}
@@ -260,9 +293,7 @@ function App() {
         }}
       />
       <Forecast
-        isLocating={isLocating}
         location={location}
-        locationError={locationError}
         lang={lang}
         profile={selectedProfile}
         tz={tz}

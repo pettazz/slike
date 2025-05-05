@@ -43,7 +43,7 @@ export function useLocation(givenSettings = {}) {
       },
       { ...defaultSettings, ...givenSettings }
     );
-  }, [givenSettings]);
+  }, []);
 
   return { isLocating, location, locationError };
 }

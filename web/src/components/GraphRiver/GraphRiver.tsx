@@ -64,7 +64,7 @@ interface IGraphProps {
   events: any;
 }
 
-export const Graph = ({ fields, data, events }: IGraphProps) => {
+export const GraphRiver = ({ fields, data, events }: IGraphProps) => {
   const graphRef = useRef(null),
         option = graphOption;
   option.legend.data = fields;
